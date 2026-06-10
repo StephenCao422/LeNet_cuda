@@ -1,0 +1,10 @@
+* text=auto
+*.cc text eol=lf
+*.cu text eol=lf
+*.h text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.slurm text eol=lf
+*.txt text eol=lf
+*.png binary
+*.bin binary

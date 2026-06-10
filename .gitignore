@@ -1,0 +1,36 @@
+# CMake and compiled outputs
+/build*/
+/cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+*.a
+*.o
+*.obj
+*.exe
+*.i
+*.ii
+*.gpu
+*.ptx
+*.cubin
+*.fatbin
+
+# CUDA profiling and runtime output
+*.ncu-rep
+*.nsys-rep
+*.sqlite
+*.out
+*.err
+*.log
+gmon.out
+outfile
+/feature_maps/
+
+# Local datasets and editor files
+/data/
+.DS_Store
+.idea/
+.vscode/
+__pycache__/
+*.pyc
