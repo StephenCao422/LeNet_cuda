@@ -10,20 +10,52 @@ and a final architecture-specific optimized implementation.
 
 ![Modified LeNet architecture](assets/lenet.png)
 
-## Highlights
+## Implementation Structure
 
-- Direct CUDA convolution baseline
-- Input unrolling with tiled matrix multiplication
-- Fused implicit-GEMM convolution
-- Constant-memory weights and loop unrolling
-- Joint register/shared-memory tiling
-- FP16 and WMMA Tensor Core acceleration
-- Optional benchmark mode with warm-up and median kernel timing
+The project is organized as an optimization progression rather than a single
+CUDA kernel:
 
-The final implementation specializes the two convolution layers separately:
+| Stage | Target | Method |
+| --- | --- | --- |
+| CPU baseline | `m1_cpu` | Direct convolution on the CPU |
+| CUDA baseline | `m1_gpu` | Direct convolution with one CUDA thread per output element |
+| Explicit GEMM | `m2_unroll` | Input unrolling, tiled matrix multiplication, then output permutation |
+| Fused GEMM | `m2_fused` | Implicit input unrolling inside a tiled convolution/GEMM kernel |
+| Final kernel | `m3`, `lenet_cuda` | Layer-specific combination of tiling, coarsening, constant memory, FP16, and WMMA |
 
-- Layer 1 uses FP32 direct convolution with strip tiling and register coarsening.
-- Layer 2 uses FP16 input tiles and WMMA operations with FP32 accumulation.
+The final implementation in
+[`src/layer/custom/m3-forward.cu`](src/layer/custom/m3-forward.cu) specializes
+the two convolution layers:
+
+- **Layer 1:** FP32 direct convolution using shared-memory input strips,
+  constant-memory weights, register accumulation, and four-column thread
+  coarsening.
+- **Layer 2:** batch-paired FP16 input-strip construction and WMMA Tensor Core
+  matrix multiplication with FP32 accumulation.
+
+Benchmark mode performs warm-up passes and reports the median measured kernel
+time.
+
+## Optimization Experiments
+
+Each directory under [`experiments/`](experiments/) isolates one optimization
+so it can be compared with its appropriate baseline.
+
+| ID | Short name | Method |
+| --- | --- | --- |
+| `req_0` | **Multi-Stream Pipeline** | Splits the batch across four CUDA streams and overlaps pinned-memory transfers with unrolling, GEMM, and permutation |
+| `req_1` | **WMMA Tensor Cores** | Replaces scalar tiled GEMM with 16x16x16 FP16 WMMA operations and FP32 accumulation |
+| `op_0` | **Constant Weights** | Places convolution masks in CUDA constant memory for cached, broadcast-friendly access |
+| `op_1` | **Restricted Pointers** | Adds `__restrict__` qualifiers to remove pointer-aliasing uncertainty |
+| `op_2` | **Unrolled FMA Loop** | Manually expands the inner 16-element dot product into groups of four FMAs |
+| `op_4` | **cuBLAS SGEMM** | Uses explicit input unrolling followed by `cublasSgemm` and output permutation |
+| `op_5` | **FP16 Half2** | Converts inputs and weights to FP16 and performs paired arithmetic with `__half2` |
+| `op_6` | **Register/Shared Tiling** | Gives each thread a register output tile while cooperatively loading larger shared-memory tiles |
+| `competition.cu` | **Hybrid Layer Specialization** | Combines a tiled FP32 first-layer kernel with a batch-paired WMMA second-layer kernel |
+
+The `archive/` directory contains earlier strip-tiled and WMMA development
+snapshots. See [the experiment catalog](experiments/README.md) for details,
+baseline relationships, and source paths.
 
 ## Repository Layout
 
@@ -31,7 +63,7 @@ The final implementation specializes the two convolution layers separately:
 .
 |-- src/                         Mini-DNN layers and CUDA support
 |   `-- layer/custom/            Convolution kernels
-|-- experiments/                 Source-only optimization variants
+|-- experiments/                 Isolated optimization variants and catalog
 |-- scripts/                     Delta/Slurm job examples
 |-- third_party/eigen/           Vendored Eigen dependency
 |-- assets/                      Architecture diagram
